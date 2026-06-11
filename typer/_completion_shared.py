@@ -92,13 +92,28 @@ def get_completion_script(*, prog_name: str, complete_var: str, shell: str) -> s
     ).strip()
 
 
+def _get_home_dir() -> Path:
+    """Return the base directory for completion installation.
+
+    When the environment variable ``_TYPER_COMPLETE_INSTALL_DIR`` is set its
+    value is used instead of the real user home directory.  This allows CI
+    pipelines and test suites to exercise the full install path without
+    touching the host filesystem.
+    """
+    override = os.environ.get("_TYPER_COMPLETE_INSTALL_DIR")
+    if override:
+        return Path(override)
+    return Path.home()
+
+
 def install_bash(*, prog_name: str, complete_var: str, shell: str) -> Path:
     # Ref: https://github.com/scop/bash-completion#faq
     # It seems bash-completion is the official completion system for bash:
     # Ref: https://www.gnu.org/software/bash/manual/html_node/A-Programmable-Completion-Example.html
     # But installing in the locations from the docs doesn't seem to have effect
-    completion_path = Path.home() / ".bash_completions" / f"{prog_name}.sh"
-    rc_path = Path.home() / ".bashrc"
+    home_dir = _get_home_dir()
+    completion_path = home_dir / ".bash_completions" / f"{prog_name}.sh"
+    rc_path = home_dir / ".bashrc"
     rc_path.parent.mkdir(parents=True, exist_ok=True)
     rc_content = ""
     if rc_path.is_file():
@@ -120,12 +135,18 @@ def install_bash(*, prog_name: str, complete_var: str, shell: str) -> Path:
 
 def install_zsh(*, prog_name: str, complete_var: str, shell: str) -> Path:
     # Setup Zsh and load ~/.zfunc
-    zshrc_path = Path.home() / ".zshrc"
+    home_dir = _get_home_dir()
+    zshrc_path = home_dir / ".zshrc"
     zshrc_path.parent.mkdir(parents=True, exist_ok=True)
     zshrc_content = ""
     if zshrc_path.is_file():
         zshrc_content = zshrc_path.read_text()
-    completion_line = "fpath+=~/.zfunc; autoload -Uz compinit; compinit"
+    zfunc_dir = home_dir / ".zfunc"
+    # Use the shell-tilde form when installing to the real home directory
+    # (preserves existing .zshrc content); use an absolute path when an
+    # override directory is in effect so the fpath is valid regardless of $HOME.
+    zfunc_fpath = "~/.zfunc" if os.environ.get("_TYPER_COMPLETE_INSTALL_DIR") is None else str(zfunc_dir)
+    completion_line = f"fpath+={zfunc_fpath}; autoload -Uz compinit; compinit"
     if completion_line not in zshrc_content:
         zshrc_content += f"\n{completion_line}\n"
     style_line = "zstyle ':completion:*' menu select"
@@ -137,7 +158,7 @@ def install_zsh(*, prog_name: str, complete_var: str, shell: str) -> Path:
     zshrc_content = f"{zshrc_content.strip()}\n"
     zshrc_path.write_text(zshrc_content)
     # Install completion under ~/.zfunc/
-    path_obj = Path.home() / f".zfunc/_{prog_name}"
+    path_obj = zfunc_dir / f"_{prog_name}"
     path_obj.parent.mkdir(parents=True, exist_ok=True)
     script_content = get_completion_script(
         prog_name=prog_name, complete_var=complete_var, shell=shell
@@ -147,7 +168,8 @@ def install_zsh(*, prog_name: str, complete_var: str, shell: str) -> Path:
 
 
 def install_fish(*, prog_name: str, complete_var: str, shell: str) -> Path:
-    path_obj = Path.home() / f".config/fish/completions/{prog_name}.fish"
+    home_dir = _get_home_dir()
+    path_obj = home_dir / f".config/fish/completions/{prog_name}.fish"
     parent_dir: Path = path_obj.parent
     parent_dir.mkdir(parents=True, exist_ok=True)
     script_content = get_completion_script(
