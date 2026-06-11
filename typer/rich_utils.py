@@ -734,6 +734,21 @@ def rich_to_html(input_text: str) -> str:
     return console.export_html(inline_styles=True, code_format="{code}").strip()
 
 
+def rich_to_text(input_text: str) -> str:
+    """Render a rich-formatted input string to plain text with markup removed.
+
+    Mirrors ``rich_to_html`` but exports plain text. It uses a deterministic,
+    terminal-independent console (fixed construction and soft wrapping) so the
+    output does not depend on the runtime terminal width, making it stable for
+    snapshot / CI checks.
+    """
+    console = Console(record=True, highlight=False, file=io.StringIO())
+
+    console.print(input_text, overflow="ignore", crop=False, soft_wrap=True)
+
+    return console.export_text().strip()
+
+
 def rich_render_text(text: str) -> str:
     """Remove rich tags and render a pure text representation"""
     console = _get_rich_console()

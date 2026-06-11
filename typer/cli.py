@@ -1,6 +1,7 @@
 import importlib.util
 import re
 import sys
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -183,6 +184,11 @@ def callback(
     maybe_update_state(ctx)
 
 
+class DocsFormat(str, Enum):
+    markdown = "markdown"
+    plain = "plain"
+
+
 def get_docs_for_click(
     *,
     obj: Command,
@@ -191,6 +197,7 @@ def get_docs_for_click(
     name: str = "",
     call_prefix: str = "",
     title: str | None = None,
+    plain: bool = False,
 ) -> str:
     docs = "#" * (1 + indent)
     command_name = name or obj.name
@@ -204,7 +211,7 @@ def get_docs_for_click(
         rich_markup_mode = ctx.obj.get(MARKUP_MODE_KEY, None)
     to_parse: bool = bool(HAS_RICH and (rich_markup_mode == "rich"))
     if obj.help:
-        docs += f"{_parse_html(to_parse, obj.help)}\n\n"
+        docs += f"{_render_help_text(to_parse, plain, obj.help)}\n\n"
     usage_pieces = obj.collect_usage_pieces(ctx)
     if usage_pieces:
         docs += "**Usage**:\n\n"
@@ -228,7 +235,7 @@ def get_docs_for_click(
         for arg_name, arg_help in args:
             docs += f"* `{arg_name}`"
             if arg_help:
-                docs += f": {_parse_html(to_parse, arg_help)}"
+                docs += f": {_render_help_text(to_parse, plain, arg_help)}"
             docs += "\n"
         docs += "\n"
     if opts:
@@ -236,7 +243,7 @@ def get_docs_for_click(
         for opt_name, opt_help in opts:
             docs += f"* `{opt_name}`"
             if opt_help:
-                docs += f": {_parse_html(to_parse, opt_help)}"
+                docs += f": {_render_help_text(to_parse, plain, opt_help)}"
             docs += "\n"
         docs += "\n"
     if obj.epilog:
@@ -252,7 +259,7 @@ def get_docs_for_click(
                 docs += f"* `{command_obj.name}`"
                 command_help = command_obj.get_short_help_str()
                 if command_help:
-                    docs += f": {_parse_html(to_parse, command_help)}"
+                    docs += f": {_render_help_text(to_parse, plain, command_help)}"
                 docs += "\n"
             docs += "\n"
         for command in commands:
@@ -262,17 +269,23 @@ def get_docs_for_click(
             if command_name:
                 use_prefix += f"{command_name}"
             docs += get_docs_for_click(
-                obj=command_obj, ctx=ctx, indent=indent + 1, call_prefix=use_prefix
+                obj=command_obj,
+                ctx=ctx,
+                indent=indent + 1,
+                call_prefix=use_prefix,
+                plain=plain,
             )
     return docs
 
 
-def _parse_html(to_parse: bool, input_text: str) -> str:
+def _render_help_text(to_parse: bool, plain: bool, text: str) -> str:
     if not to_parse:
-        return input_text
+        return text
     from . import rich_utils
 
-    return rich_utils.rich_to_html(input_text)
+    if plain:
+        return rich_utils.rich_to_text(text)
+    return rich_utils.rich_to_html(text)
 
 
 @utils_app.command()
@@ -290,9 +303,16 @@ def docs(
         help="The title for the documentation page. If not provided, the name of "
         "the program is used.",
     ),
+    output_format: DocsFormat = typer.Option(
+        DocsFormat.markdown,
+        "--format",
+        help="The output format for the docs: 'markdown' (default) keeps Rich "
+        "markup as inline HTML; 'plain' renders Rich markup as plain text with "
+        "tags removed, producing stable output for snapshot checks.",
+    ),
 ) -> None:
     """
-    Generate Markdown docs for a Typer app.
+    Generate Markdown or plain text docs for a Typer app.
     """
     typer_obj = get_typer_from_state()
     if not typer_obj:
@@ -304,7 +324,13 @@ def docs(
         if isinstance(ctx.obj, dict):
             ctx.obj[MARKUP_MODE_KEY] = typer_obj.rich_markup_mode
     click_obj = typer.main.get_command(typer_obj)
-    docs = get_docs_for_click(obj=click_obj, ctx=ctx, name=name, title=title)
+    docs = get_docs_for_click(
+        obj=click_obj,
+        ctx=ctx,
+        name=name,
+        title=title,
+        plain=output_format == DocsFormat.plain,
+    )
     clean_docs = f"{docs.strip()}\n"
     if output:
         output.write_text(clean_docs)
