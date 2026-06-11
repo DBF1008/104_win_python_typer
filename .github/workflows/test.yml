@@ -69,6 +69,7 @@ jobs:
       - name: Install Dependencies
         run: uv sync --no-dev --group tests
       - run: mkdir coverage
+      - run: mkdir test-reports
       - run: uv run bash scripts/test-files.sh
       - name: Test
         run: uv run bash scripts/test.sh
@@ -80,6 +81,13 @@ jobs:
         with:
           name: coverage-${{ runner.os }}-${{ matrix.python-version }}
           path: coverage
+          include-hidden-files: true
+      - name: Store test diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-reports-${{ runner.os }}-${{ matrix.python-version }}
+          path: test-reports
           include-hidden-files: true
 
   coverage-combine:

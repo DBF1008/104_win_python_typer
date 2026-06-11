@@ -16,7 +16,7 @@ app = mod.app
 
 
 @requires_completion_permission
-def test_completion_install_no_shell():
+def test_completion_install_no_shell(sandbox_home):
     result = subprocess.run(
         [sys.executable, "-m", "coverage", "run", mod.__file__, "--install-completion"],
         capture_output=True,
@@ -26,15 +26,14 @@ def test_completion_install_no_shell():
             "_TYPER_COMPLETE_TEST_DISABLE_SHELL_DETECTION": "True",
         },
     )
-    assert "Option '--install-completion' requires an argument" in result.stderr
+    assert "Option '--install-completion' requires an argument" in result.stderr, (
+        result.stdout
+    )
 
 
 @requires_completion_permission
-def test_completion_install_bash():
-    bash_completion_path: Path = Path.home() / ".bashrc"
-    text = ""
-    if bash_completion_path.is_file():
-        text = bash_completion_path.read_text()
+def test_completion_install_bash(sandbox_home):
+    bash_completion_path: Path = sandbox_home / ".bashrc"
     result = subprocess.run(
         [
             sys.executable,
@@ -53,16 +52,13 @@ def test_completion_install_bash():
         },
     )
     new_text = bash_completion_path.read_text()
-    bash_completion_path.write_text(text)
     install_source = Path(".bash_completions/tutorial001_py310.py.sh")
-    assert str(install_source) not in text
     assert str(install_source) in new_text
-    assert "completion installed in" in result.stdout
+    assert "completion installed in" in result.stdout, result.stderr
     assert "Completion will take effect once you restart the terminal" in result.stdout
-    install_source_path = Path.home() / install_source
+    install_source_path = sandbox_home / install_source
     assert install_source_path.is_file()
     install_content = install_source_path.read_text()
-    install_source_path.unlink()
     assert (
         "complete -o default -F _tutorial001_py310py_completion tutorial001_py310.py"
         in install_content
@@ -70,13 +66,8 @@ def test_completion_install_bash():
 
 
 @requires_completion_permission
-def test_completion_install_zsh():
-    completion_path: Path = Path.home() / ".zshrc"
-    text = ""
-    if not completion_path.is_file():  # pragma: no cover
-        completion_path.write_text('echo "custom .zshrc"')
-    if completion_path.is_file():
-        text = completion_path.read_text()
+def test_completion_install_zsh(sandbox_home):
+    completion_path: Path = sandbox_home / ".zshrc"
     result = subprocess.run(
         [
             sys.executable,
@@ -95,15 +86,13 @@ def test_completion_install_zsh():
         },
     )
     new_text = completion_path.read_text()
-    completion_path.write_text(text)
     zfunc_fragment = "fpath+=~/.zfunc"
     assert zfunc_fragment in new_text
-    assert "completion installed in" in result.stdout
+    assert "completion installed in" in result.stdout, result.stderr
     assert "Completion will take effect once you restart the terminal" in result.stdout
-    install_source_path = Path.home() / ".zfunc/_tutorial001_py310.py"
+    install_source_path = sandbox_home / ".zfunc/_tutorial001_py310.py"
     assert install_source_path.is_file()
     install_content = install_source_path.read_text()
-    install_source_path.unlink()
     assert (
         "compdef _tutorial001_py310py_completion tutorial001_py310.py"
         in install_content
@@ -111,10 +100,10 @@ def test_completion_install_zsh():
 
 
 @requires_completion_permission
-def test_completion_install_fish():
+def test_completion_install_fish(sandbox_home):
     script_path = Path(mod.__file__)
     completion_path: Path = (
-        Path.home() / f".config/fish/completions/{script_path.name}.fish"
+        sandbox_home / f".config/fish/completions/{script_path.name}.fish"
     )
     result = subprocess.run(
         [
@@ -134,21 +123,17 @@ def test_completion_install_fish():
         },
     )
     new_text = completion_path.read_text()
-    completion_path.unlink()
     assert "complete --command tutorial001_py310.py" in new_text
-    assert "completion installed in" in result.stdout
+    assert "completion installed in" in result.stdout, result.stderr
     assert "Completion will take effect once you restart the terminal" in result.stdout
 
 
 @requires_completion_permission
-def test_completion_install_powershell():
+def test_completion_install_powershell(sandbox_home):
     completion_path: Path = (
-        Path.home() / ".config/powershell/Microsoft.PowerShell_profile.ps1"
+        sandbox_home / ".config/powershell/Microsoft.PowerShell_profile.ps1"
     )
     completion_path_bytes = f"{completion_path}\n".encode("windows-1252")
-    text = ""
-    if completion_path.is_file():  # pragma: no cover
-        text = completion_path.read_text()
 
     with mock.patch.object(
         shellingham, "detect_shell", return_value=("pwsh", "/usr/bin/pwsh")
@@ -166,8 +151,6 @@ def test_completion_install_powershell():
     parent.mkdir(parents=True, exist_ok=True)
     completion_path.write_text(install_script)
     new_text = completion_path.read_text()
-    completion_path.write_text(text)
-    assert install_script not in text
     assert install_script in new_text
-    assert "completion installed in" in result.stdout
+    assert "completion installed in" in result.stdout, result.stderr
     assert "Completion will take effect once you restart the terminal" in result.stdout
