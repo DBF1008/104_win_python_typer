@@ -31,6 +31,13 @@ state = State()
 
 
 def maybe_update_state(ctx: _click.Context) -> None:
+    # Reset state to avoid leaking file/module/app/func from a previous
+    # in-process invocation.  Every call repopulates from the current
+    # context params, so no information is lost.
+    state.file = None
+    state.module = None
+    state.app = None
+    state.func = None
     path_or_module = ctx.params.get("path_or_module")
     if path_or_module:
         file_path = Path(path_or_module)
@@ -138,16 +145,20 @@ def get_typer_from_state() -> typer.Typer | None:
 
 
 def maybe_add_run_to_cli(cli: TyperGroup) -> None:
-    if "run" not in cli.commands:
-        if state.file or state.module:
-            obj = get_typer_from_state()
-            if obj:
-                obj._add_completion = False
-                click_obj = typer.main.get_command(obj)
-                click_obj.name = "run"
-                if not click_obj.help:
-                    click_obj.help = "Run the provided Typer app."
-                cli.add_command(click_obj)
+    # Always remove a previously injected "run" command so that consecutive
+    # in-process invocations with different file/module arguments don't
+    # serve a stale command pointing at the old entry point.
+    if "run" in cli.commands:
+        del cli.commands["run"]
+    if state.file or state.module:
+        obj = get_typer_from_state()
+        if obj:
+            obj._add_completion = False
+            click_obj = typer.main.get_command(obj)
+            click_obj.name = "run"
+            if not click_obj.help:
+                click_obj.help = "Run the provided Typer app."
+            cli.add_command(click_obj)
 
 
 def print_version(ctx: _click.Context, param: TyperOption, value: bool) -> None:
