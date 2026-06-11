@@ -1,0 +1,16 @@
+Awesome CLI
+
+Say hello to the user.
+
+Usage:
+  $ hello [OPTIONS] USER_1 [USER_2]
+
+Arguments:
+  USER_1: The cool name of the user  [required]
+  [USER_2]: The world  [default: The World]
+
+Options:
+  --force / --no-force: Force the welcome message  [default: no-force]
+  --install-completion: Install completion for the current shell.
+  --show-completion: Show completion for the current shell, to copy it or customize the installation.
+  --help: Show this message and exit.

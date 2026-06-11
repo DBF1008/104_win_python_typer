@@ -275,6 +275,139 @@ def _parse_html(to_parse: bool, input_text: str) -> str:
     return rich_utils.rich_to_html(input_text)
 
 
+def _strip_rich_markup(text: str) -> str:
+    """Strip rich markup tags and return plain text content."""
+    if HAS_RICH:
+        from . import rich_utils
+
+        return rich_utils.rich_render_text(text)
+    # Fallback: strip tags via regex when rich is not available
+    return re.sub(r"\[/?[^\]]+\]", "", text)
+
+
+def get_docs_for_click_text(
+    *,
+    obj: Command,
+    ctx: typer.Context,
+    indent: int = 0,
+    name: str = "",
+    call_prefix: str = "",
+    title: str | None = None,
+) -> str:
+    """Generate plain text documentation for a Typer command.
+
+    Produces stable, markup-free output suitable for CI snapshot validation.
+    Rich markup tags are stripped while preserving the text content.
+    Subcommand structure is recursively included with indentation.
+    """
+    command_name = name or obj.name or ""
+    if call_prefix:
+        command_name = f"{call_prefix} {command_name}"
+
+    rich_markup_mode = None
+    if hasattr(ctx, "obj") and isinstance(ctx.obj, dict):
+        rich_markup_mode = ctx.obj.get(MARKUP_MODE_KEY, None)
+    to_parse: bool = bool(HAS_RICH and (rich_markup_mode == "rich"))
+
+    def _clean(text: str) -> str:
+        if to_parse:
+            return _strip_rich_markup(text)
+        return text
+
+    # Resolve title
+    if title:
+        header = title
+    elif command_name:
+        header = command_name
+    else:
+        header = "CLI"
+
+    prefix = "  " * indent
+    parts: list[str] = [header]
+    parts.append("")
+
+    if obj.help:
+        parts.append(_clean(obj.help))
+        parts.append("")
+
+    usage_pieces = obj.collect_usage_pieces(ctx)
+    if usage_pieces:
+        parts.append("Usage:")
+        cmd = f"{command_name} " if command_name else ""
+        parts.append(f"  $ {cmd}{' '.join(usage_pieces)}")
+        parts.append("")
+
+    args = []
+    opts = []
+    for param in obj.get_params(ctx):
+        rv = param.get_help_record(ctx)
+        if rv is not None:
+            if param.param_type_name == "argument":
+                args.append(rv)
+            elif param.param_type_name == "option":
+                opts.append(rv)
+
+    if args:
+        parts.append("Arguments:")
+        for arg_name, arg_help in args:
+            line = f"  {arg_name}"
+            if arg_help:
+                line += f": {_clean(arg_help)}"
+            parts.append(line)
+        parts.append("")
+
+    if opts:
+        parts.append("Options:")
+        for opt_name, opt_help in opts:
+            line = f"  {opt_name}"
+            if opt_help:
+                line += f": {_clean(opt_help)}"
+            parts.append(line)
+        parts.append("")
+
+    if obj.epilog:
+        parts.append(_clean(obj.epilog))
+        parts.append("")
+
+    if isinstance(obj, TyperGroup):
+        group = obj
+        commands = group.list_commands(ctx)
+        if commands:
+            parts.append("Commands:")
+            for command in commands:
+                command_obj = group.get_command(ctx, command)
+                assert command_obj
+                line = f"  {command_obj.name}"
+                command_help = command_obj.get_short_help_str()
+                if command_help:
+                    line += f": {_clean(command_help)}"
+                parts.append(line)
+            parts.append("")
+        for command in commands:
+            command_obj = group.get_command(ctx, command)
+            assert command_obj
+            use_prefix = command_name if command_name else ""
+            parts.append(
+                get_docs_for_click_text(
+                    obj=command_obj,
+                    ctx=ctx,
+                    indent=indent + 1,
+                    call_prefix=use_prefix,
+                )
+            )
+
+    # Apply indentation: first line (title) is flush, rest are indented
+    result_lines = []
+    for i, line in enumerate(parts):
+        if i == 0:
+            result_lines.append(line)
+        elif line:
+            result_lines.append(f"{prefix}{line}")
+        else:
+            result_lines.append("")
+    return "\n".join(result_lines)
+
+
 @utils_app.command()
 def docs(
     ctx: typer.Context,
@@ -290,10 +423,18 @@ def docs(
         help="The title for the documentation page. If not provided, the name of "
         "the program is used.",
     ),
+    format: str = typer.Option(
+        "md",
+        help="Output format: 'md' for Markdown (default), 'txt' for plain text "
+        "with rich markup stripped.",
+    ),
 ) -> None:
     """
     Generate Markdown docs for a Typer app.
     """
+    if format not in ("md", "txt"):
+        typer.echo(f"Invalid format: {format}. Use 'md' or 'txt'.", err=True)
+        raise typer.Abort()
     typer_obj = get_typer_from_state()
     if not typer_obj:
         typer.echo("No Typer app found", err=True)
@@ -304,8 +445,13 @@ def docs(
         if isinstance(ctx.obj, dict):
             ctx.obj[MARKUP_MODE_KEY] = typer_obj.rich_markup_mode
     click_obj = typer.main.get_command(typer_obj)
-    docs = get_docs_for_click(obj=click_obj, ctx=ctx, name=name, title=title)
-    clean_docs = f"{docs.strip()}\n"
+    if format == "txt":
+        docs_text = get_docs_for_click_text(
+            obj=click_obj, ctx=ctx, name=name, title=title
+        )
+    else:
+        docs_text = get_docs_for_click(obj=click_obj, ctx=ctx, name=name, title=title)
+    clean_docs = f"{docs_text.strip()}\n"
     if output:
         output.write_text(clean_docs)
         typer.echo(f"Docs saved to: {output}")
