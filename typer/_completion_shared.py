@@ -92,13 +92,35 @@ def get_completion_script(*, prog_name: str, complete_var: str, shell: str) -> s
     ).strip()
 
 
-def install_bash(*, prog_name: str, complete_var: str, shell: str) -> Path:
+def _get_completion_home(home_dir: Path | None = None) -> Path:
+    """Return the directory completion files should be written under.
+
+    Resolution order:
+
+    1. The explicit ``home_dir`` argument, when given.
+    2. The ``_TYPER_COMPLETE_TEST_HOME`` environment variable, which lets CI
+       and tests redirect the install to a disposable directory instead of the
+       real user home.
+    3. The real user home (``Path.home()``), the default behavior.
+    """
+    if home_dir is not None:
+        return home_dir
+    env_home = os.getenv("_TYPER_COMPLETE_TEST_HOME")
+    if env_home:
+        return Path(env_home)
+    return Path.home()
+
+
+def install_bash(
+    *, prog_name: str, complete_var: str, shell: str, home_dir: Path | None = None
+) -> Path:
     # Ref: https://github.com/scop/bash-completion#faq
     # It seems bash-completion is the official completion system for bash:
     # Ref: https://www.gnu.org/software/bash/manual/html_node/A-Programmable-Completion-Example.html
     # But installing in the locations from the docs doesn't seem to have effect
-    completion_path = Path.home() / ".bash_completions" / f"{prog_name}.sh"
-    rc_path = Path.home() / ".bashrc"
+    home = _get_completion_home(home_dir)
+    completion_path = home / ".bash_completions" / f"{prog_name}.sh"
+    rc_path = home / ".bashrc"
     rc_path.parent.mkdir(parents=True, exist_ok=True)
     rc_content = ""
     if rc_path.is_file():
