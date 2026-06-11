@@ -15,14 +15,33 @@ from ._completion_shared import (
     Shells,
 )
 
+# Regex to match ANSI escape sequences
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|\x1b\].*?\x07")
+
 
 def _sanitize_help_text(text: str) -> str:
-    """Sanitizes the help text by removing rich tags"""
+    """Sanitizes the help text by removing rich tags and ANSI escape codes.
+
+    Also replaces newlines and tabs with spaces and collapses multiple spaces
+    to ensure the text doesn't break shell completion formats.
+    """
     if not importlib.util.find_spec("rich"):
+        # No rich installed, just strip ANSI codes and normalize whitespace
+        text = _ANSI_ESCAPE_RE.sub("", text)
+        text = text.replace("\n", " ").replace("\r", " ").replace("\t", " ")
+        text = re.sub(r" +", " ", text).strip()
         return text
     from . import rich_utils
 
-    return rich_utils.rich_render_text(text)
+    # First render through rich to strip rich markup
+    text = rich_utils.rich_render_text(text)
+    # Then strip any remaining ANSI escape codes
+    text = _ANSI_ESCAPE_RE.sub("", text)
+    # Normalize whitespace - newlines and tabs would break completion formats
+    text = text.replace("\n", " ").replace("\r", " ").replace("\t", " ")
+    # Collapse multiple spaces into one
+    text = re.sub(r" +", " ", text).strip()
+    return text
 
 
 class BashComplete(ShellComplete):
@@ -118,22 +137,38 @@ class ZshComplete(ShellComplete):
         return args, incomplete
 
     def format_completion(self, item: CompletionItem) -> str:
-        def escape(s: str) -> str:
+        def escape_value(s: str) -> str:
+            """Escape special characters for zsh value (inside double quotes).
+
+            Colons must be escaped because they are special in the ((...)) format.
+            """
             return (
-                s.replace('"', '""')
-                .replace("'", "''")
+                s.replace("\\", "\\\\")
+                .replace('"', '\\"')
                 .replace("$", "\\$")
                 .replace("`", "\\`")
-                .replace(":", r"\\:")
+                .replace(":", r"\:")
             )
 
-        # TODO: Explore replicating the new behavior from Click, pay attention to
-        # the difference with and without escape
-        # return f"{item.type}\n{item.value}\n{item.help if item.help else '_'}"
-        if item.help:
-            return f'"{escape(item.value)}":"{_sanitize_help_text(escape(item.help))}"'
+        def escape_description(s: str) -> str:
+            """Escape special characters for zsh description (inside double quotes).
+
+            Colons do NOT need escaping in the description part.
+            """
+            return (
+                s.replace("\\", "\\\\")
+                .replace('"', '\\"')
+                .replace("$", "\\$")
+                .replace("`", "\\`")
+            )
+
+        # Sanitize help text first (strip Rich tags and ANSI codes)
+        sanitized_help = _sanitize_help_text(item.help) if item.help else None
+
+        if sanitized_help:
+            return f'"{escape_value(item.value)}":"{escape_description(sanitized_help)}"'
         else:
-            return f'"{escape(item.value)}"'
+            return f'"{escape_value(item.value)}"'
 
     def complete(self) -> str:
         args, incomplete = self.get_completion_args()
@@ -169,15 +204,12 @@ class FishComplete(ShellComplete):
         return args, incomplete
 
     def format_completion(self, item: CompletionItem) -> str:
-        # TODO: Explore replicating the new behavior from Click, pay attention to
-        # the difference with and without formatted help
-        # if item.help:
-        #     return f"{item.type},{item.value}\t{item.help}"
-
-        # return f"{item.type},{item.value}
+        # Sanitize help text (strip Rich tags, ANSI codes, normalize whitespace)
         if item.help:
-            formatted_help = re.sub(r"\s", " ", item.help)
-            return f"{item.value}\t{_sanitize_help_text(formatted_help)}"
+            sanitized_help = _sanitize_help_text(item.help)
+            # Collapse any remaining whitespace sequences into single spaces
+            sanitized_help = re.sub(r"\s+", " ", sanitized_help).strip()
+            return f"{item.value}\t{sanitized_help}"
         else:
             return f"{item.value}"
 

@@ -77,11 +77,11 @@ def test_completion_colon_zsh_all():
             "_TYPER_COMPLETE_ARGS": "colon_example.py --name ",
         },
     )
-    assert "alpine\\\\:hello" in result.stdout
-    assert "fake image\\\\: for testing" in result.stdout
-    assert "alpine\\\\:latest" in result.stdout
+    assert "alpine\\:hello" in result.stdout
+    assert "fake image: for testing" in result.stdout
+    assert "alpine\\:latest" in result.stdout
     assert "latest alpine image" in result.stdout
-    assert "nvidia/cuda\\\\:10.0-devel-ubuntu18.04" in result.stdout
+    assert "nvidia/cuda\\:10.0-devel-ubuntu18.04" in result.stdout
 
 
 def test_completion_colon_zsh_partial():
@@ -95,11 +95,11 @@ def test_completion_colon_zsh_partial():
             "_TYPER_COMPLETE_ARGS": "colon_example.py --name alpine",
         },
     )
-    assert "alpine\\\\:hello" in result.stdout
-    assert "fake image\\\\: for testing" in result.stdout
-    assert "alpine\\\\:latest" in result.stdout
+    assert "alpine\\:hello" in result.stdout
+    assert "fake image: for testing" in result.stdout
+    assert "alpine\\:latest" in result.stdout
     assert "latest alpine image" in result.stdout
-    assert "nvidia/cuda\\\\:10.0-devel-ubuntu18.04" not in result.stdout
+    assert "nvidia/cuda\\:10.0-devel-ubuntu18.04" not in result.stdout
 
 
 def test_completion_colon_zsh_single():
@@ -113,11 +113,11 @@ def test_completion_colon_zsh_single():
             "_TYPER_COMPLETE_ARGS": "colon_example.py --name alpine:hell",
         },
     )
-    assert "alpine\\\\:hello" in result.stdout
-    assert "fake image\\\\: for testing" in result.stdout
-    assert "alpine\\\\:latest" not in result.stdout
+    assert "alpine\\:hello" in result.stdout
+    assert "fake image: for testing" in result.stdout
+    assert "alpine\\:latest" not in result.stdout
     assert "latest alpine image" not in result.stdout
-    assert "nvidia/cuda\\\\:10.0-devel-ubuntu18.04" not in result.stdout
+    assert "nvidia/cuda\\:10.0-devel-ubuntu18.04" not in result.stdout
 
 
 def test_completion_colon_powershell_all():
