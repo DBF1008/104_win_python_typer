@@ -276,7 +276,7 @@ class TyperArgument(_click.core.Parameter):
         # Rich settings
         rich_help_panel: str | None = None,
     ):
-        self.help = help
+        self.help = inspect.cleandoc(help) if help else help
         self.show_default = show_default
         self.show_choices = show_choices
         self.show_envvar = show_envvar

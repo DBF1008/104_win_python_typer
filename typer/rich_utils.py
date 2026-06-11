@@ -163,6 +163,30 @@ def _get_rich_console(stderr: bool = False) -> Console:
     )
 
 
+def prepare_help_text(text: str, *, collapse_newlines: bool = True) -> str:
+    """Common preprocessing for help text shared by all output paths.
+
+    Applies the following transformations:
+    1. ``inspect.cleandoc()`` to remove common indentation.
+    2. Truncate at form-feed ``\\f`` (Click's short-help boundary marker).
+    3. When *collapse_newlines* is ``True``, collapse single newlines within
+       each paragraph into spaces (paragraphs are separated by blank lines).
+       Paragraphs starting with the ``\\b`` no-rewrap marker are left intact.
+    """
+    text = inspect.cleandoc(text)
+    text = text.partition("\f")[0]
+    if collapse_newlines:
+        paragraphs = text.split("\n\n")
+        cleaned: list[str] = []
+        for p in paragraphs:
+            if p.startswith("\b"):
+                cleaned.append(p.replace("\b\n", ""))
+            else:
+                cleaned.append(p.replace("\n", " "))
+        text = "\n\n".join(cleaned)
+    return text
+
+
 def _make_rich_text(
     *, text: str, style: str = "", markup_mode: MarkupModeStrict
 ) -> Markdown | Text:
@@ -335,12 +359,9 @@ def _make_command_help(
     Rich Text object or as Markdown.
     Ignores single newlines as paragraph markers, looks for double only.
     """
-    paragraphs = inspect.cleandoc(help_text).split("\n\n")
-    # Remove single linebreaks
-    if markup_mode != MARKUP_MODE_RICH and not paragraphs[0].startswith("\b"):
-        paragraphs[0] = paragraphs[0].replace("\n", " ")
-    elif paragraphs[0].startswith("\b"):
-        paragraphs[0] = paragraphs[0].replace("\b\n", "")
+    paragraphs = prepare_help_text(
+        help_text, collapse_newlines=markup_mode != MARKUP_MODE_MARKDOWN
+    ).split("\n\n")
     return _make_rich_text(
         text=paragraphs[0].strip(),
         style=STYLE_OPTION_HELP,
