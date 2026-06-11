@@ -21,6 +21,9 @@ app.add_typer(utils_app, name="utils")
 
 class State:
     def __init__(self) -> None:
+        self.reset()
+
+    def reset(self) -> None:
         self.app: str | None = None
         self.func: str | None = None
         self.file: Path | None = None
@@ -52,6 +55,14 @@ def maybe_update_state(ctx: _click.Context) -> None:
 
 
 class TyperCLIGroup(typer.core.TyperGroup):
+    def main(self, *args: Any, **kwargs: Any) -> Any:
+        # Each top-level invocation must start from a clean selection. Otherwise
+        # a file/module/app/func chosen in a previous call within the same
+        # process (e.g. consecutive CliRunner invocations) would leak into this
+        # one and make ``run``/``utils docs`` resolve a stale object.
+        state.reset()
+        return super().main(*args, **kwargs)
+
     def list_commands(self, ctx: _click.Context) -> list[str]:
         self.maybe_add_run(ctx)
         return super().list_commands(ctx)
