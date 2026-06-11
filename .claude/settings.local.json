@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(PYTHONPATH=\"$PWD\" python3 -m pytest tests/test_completion/test_completion_sanitize.py tests/test_completion/test_sanitization.py -p no:cacheprovider -q)"
+    ]
+  }
+}

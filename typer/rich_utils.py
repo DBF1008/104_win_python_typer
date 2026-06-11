@@ -13,6 +13,7 @@ from rich.align import Align
 from rich.columns import Columns
 from rich.console import Console, RenderableType, group
 from rich.emoji import Emoji
+from rich.errors import MarkupError
 from rich.highlighter import RegexHighlighter
 from rich.markdown import Markdown
 from rich.markup import escape
@@ -735,9 +736,21 @@ def rich_to_html(input_text: str) -> str:
 
 
 def rich_render_text(text: str) -> str:
-    """Remove rich tags and render a pure text representation"""
-    console = _get_rich_console()
-    return "".join(segment.text for segment in console.render(text)).rstrip("\n")
+    """Remove Rich markup and ANSI escape sequences and return plain text.
+
+    This is used to sanitize help strings before they are embedded in shell
+    completion output. Unlike rendering through a ``Console``, it does not wrap
+    text to a fixed width, so no spurious newlines are introduced into the
+    result (which would otherwise break completion parsing).
+    """
+    if _has_ansi_character(text):
+        return Text.from_ansi(text).plain
+    try:
+        return Text.from_markup(text).plain
+    except MarkupError:
+        # Fall back to the raw text if it contains invalid markup so that
+        # completion never crashes on user-provided help strings.
+        return text
 
 
 def get_traceback(

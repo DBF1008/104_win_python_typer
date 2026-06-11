@@ -17,12 +17,19 @@ from ._completion_shared import (
 
 
 def _sanitize_help_text(text: str) -> str:
-    """Sanitizes the help text by removing rich tags"""
-    if not importlib.util.find_spec("rich"):
-        return text
-    from . import rich_utils
+    """Render help text to a single line of plain text for shell completion.
 
-    return rich_utils.rich_render_text(text)
+    Strips Rich markup and ANSI escape sequences (when Rich is installed) and
+    collapses every run of whitespace (including newlines) into a single space.
+    This keeps the result safe to embed in shell completion scripts, where a
+    stray newline or control character would truncate a description or break a
+    whole group of candidates.
+    """
+    if importlib.util.find_spec("rich"):
+        from . import rich_utils
+
+        text = rich_utils.rich_render_text(text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 class BashComplete(ShellComplete):
@@ -131,7 +138,10 @@ class ZshComplete(ShellComplete):
         # the difference with and without escape
         # return f"{item.type}\n{item.value}\n{item.help if item.help else '_'}"
         if item.help:
-            return f'"{escape(item.value)}":"{_sanitize_help_text(escape(item.help))}"'
+            # Sanitize the help text into plain, single-line text *before*
+            # escaping it for Zsh, so that the colon escaping (and quoting) is
+            # not undone or corrupted by Rich markup rendering.
+            return f'"{escape(item.value)}":"{escape(_sanitize_help_text(item.help))}"'
         else:
             return f'"{escape(item.value)}"'
 
@@ -176,8 +186,10 @@ class FishComplete(ShellComplete):
 
         # return f"{item.type},{item.value}
         if item.help:
-            formatted_help = re.sub(r"\s", " ", item.help)
-            return f"{item.value}\t{_sanitize_help_text(formatted_help)}"
+            # _sanitize_help_text already collapses all whitespace (including
+            # newlines introduced by wrapping) into single spaces, keeping the
+            # value/help pair on a single tab-separated line for Fish.
+            return f"{item.value}\t{_sanitize_help_text(item.help)}"
         else:
             return f"{item.value}"
 
